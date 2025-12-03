@@ -1,8 +1,10 @@
-use crate::{
-    commands::CommandExec, config::ScillaConfig, context::ScillaContext, error::ScillaResult,
-    prompt::prompt_for_command,
+use {
+    crate::{
+        commands::CommandExec, config::ScillaConfig, context::ScillaContext, error::ScillaResult,
+        prompt::prompt_for_command,
+    },
+    console::style,
 };
-use console::style;
 
 pub mod commands;
 pub mod config;

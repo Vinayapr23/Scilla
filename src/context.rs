@@ -1,9 +1,10 @@
-use solana_commitment_config::CommitmentConfig;
-use solana_keypair::{EncodableKey, Keypair, Signer};
-use solana_pubkey::Pubkey;
-use solana_rpc_client::nonblocking::rpc_client::RpcClient;
-
-use crate::config::ScillaConfig;
+use {
+    crate::config::ScillaConfig,
+    solana_commitment_config::CommitmentConfig,
+    solana_keypair::{EncodableKey, Keypair, Signer},
+    solana_pubkey::Pubkey,
+    solana_rpc_client::nonblocking::rpc_client::RpcClient,
+};
 
 pub struct ScillaContext {
     rpc_client: RpcClient,

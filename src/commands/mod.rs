@@ -1,14 +1,14 @@
-use std::process::{ExitCode, Termination};
-
-use console::style;
-
-use crate::{
-    commands::{
-        account::AccountCommand, cluster::ClusterCommand, config::ConfigCommand,
-        stake::StakeCommand, vote::VoteCommand,
+use {
+    crate::{
+        commands::{
+            account::AccountCommand, cluster::ClusterCommand, config::ConfigCommand,
+            stake::StakeCommand, vote::VoteCommand,
+        },
+        context::ScillaContext,
+        error::ScillaResult,
     },
-    context::ScillaContext,
-    error::ScillaResult,
+    console::style,
+    std::process::{ExitCode, Termination},
 };
 
 pub mod account;
@@ -48,7 +48,7 @@ impl Command {
             Command::Account(account_command) => account_command.process_command(ctx).await,
             Command::Vote(_vote_command) => todo!(),
             Command::ScillaConfig(_config_command) => todo!(),
-            Command::Exit => return Ok(CommandExec::Exit),
+            Command::Exit => Ok(CommandExec::Exit),
         }
     }
 }

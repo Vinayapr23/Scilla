@@ -1,11 +1,11 @@
-use std::ops::Div;
-
-use console::style;
-use solana_pubkey::Pubkey;
-
-use crate::{
-    commands::CommandExec, constants::LAMPORTS_PER_SOL, context::ScillaContext,
-    error::ScillaResult, prompt::prompt_data, ui::show_spinner,
+use {
+    crate::{
+        commands::CommandExec, constants::LAMPORTS_PER_SOL, context::ScillaContext,
+        error::ScillaResult, prompt::prompt_data, ui::show_spinner,
+    },
+    console::style,
+    solana_pubkey::Pubkey,
+    std::ops::Div,
 };
 
 /// Commands related to wallet or account management

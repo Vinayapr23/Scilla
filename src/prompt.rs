@@ -1,10 +1,11 @@
-use std::str::FromStr;
-
-use crate::commands::{
-    account::AccountCommand, cluster::ClusterCommand, config::ConfigCommand, stake::StakeCommand,
-    vote::VoteCommand, *,
+use {
+    crate::commands::{
+        Command, account::AccountCommand, cluster::ClusterCommand, config::ConfigCommand,
+        stake::StakeCommand, vote::VoteCommand,
+    },
+    inquire::{Select, Text},
+    std::str::FromStr,
 };
-use inquire::{Select, Text};
 
 pub fn prompt_for_command() -> anyhow::Result<Command> {
     let top_level = Select::new(

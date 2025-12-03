@@ -1,6 +1,4 @@
-use thiserror::Error;
-
-use crate::commands::CommandExec;
+use {crate::commands::CommandExec, thiserror::Error};
 
 pub type ScillaResult<T> = anyhow::Result<CommandExec<T>>;
 
