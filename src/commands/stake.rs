@@ -1,11 +1,11 @@
 use {
     crate::{
         commands::CommandExec,
-        constants::LAMPORTS_PER_SOL,
         context::ScillaContext,
         error::ScillaResult,
+        misc::helpers::{lamports_to_sol, sol_to_lamports},
         prompt::prompt_data,
-        ui::{print_error, show_spinner},
+        ui::show_spinner,
     },
     anyhow::bail,
     console::style,
@@ -57,14 +57,11 @@ impl StakeCommand {
             StakeCommand::Deactivate => {
                 let stake_pubkey: Pubkey =
                     prompt_data("Enter Stake Account Pubkey to Deactivate:")?;
-                let res = show_spinner(
+                show_spinner(
                     self.spinner_msg(),
-                    deactivate_stake_account(ctx, &stake_pubkey),
+                    process_deactivate_stake_account(ctx, &stake_pubkey),
                 )
-                .await;
-                if let Err(e) = res {
-                    print_error(format!("Deactivation failed: {}", e));
-                }
+                .await?;
             }
             StakeCommand::Withdraw => {
                 let stake_pubkey: Pubkey =
@@ -72,14 +69,11 @@ impl StakeCommand {
                 let recipient: Pubkey = prompt_data("Enter Recipient Address:")?;
                 let amount: f64 = prompt_data("Enter Amount to Withdraw (SOL):")?;
 
-                let res = show_spinner(
+                show_spinner(
                     self.spinner_msg(),
-                    withdraw_stake(ctx, &stake_pubkey, &recipient, amount),
+                    process_withdraw_stake(ctx, &stake_pubkey, &recipient, amount),
                 )
-                .await;
-                if let Err(e) = res {
-                    print_error(format!("Withdrawal failed: {}", e));
-                }
+                .await?;
             }
             StakeCommand::Merge => todo!(),
             StakeCommand::Split => todo!(),
@@ -92,7 +86,7 @@ impl StakeCommand {
     }
 }
 
-async fn deactivate_stake_account(
+async fn process_deactivate_stake_account(
     ctx: &ScillaContext,
     stake_pubkey: &Pubkey,
 ) -> anyhow::Result<()> {
@@ -149,7 +143,7 @@ async fn deactivate_stake_account(
     Ok(())
 }
 
-async fn withdraw_stake(
+async fn process_withdraw_stake(
     ctx: &ScillaContext,
     stake_pubkey: &Pubkey,
     recipient: &Pubkey,
@@ -159,7 +153,7 @@ async fn withdraw_stake(
         bail!("Withdrawal amount must be greater than 0");
     }
 
-    let lamports = (amount_sol * LAMPORTS_PER_SOL as f64) as u64;
+    let lamports = sol_to_lamports(amount_sol);
 
     let account = ctx.rpc().get_account(stake_pubkey).await?;
 
@@ -217,7 +211,7 @@ async fn withdraw_stake(
     if lamports > account.lamports {
         bail!(
             "Insufficient balance. Have {:.6} SOL, trying to withdraw {:.6} SOL",
-            account.lamports as f64 / LAMPORTS_PER_SOL as f64,
+            lamports_to_sol(account.lamports),
             amount_sol
         );
     }
