@@ -1,4 +1,23 @@
-use crate::{commands::CommandExec, context::ScillaContext, error::ScillaResult};
+use {
+    crate::{
+        commands::CommandExec,
+        constants::LAMPORTS_PER_SOL,
+        context::ScillaContext,
+        error::ScillaResult,
+        prompt::prompt_data,
+        ui::{print_error, show_spinner},
+    },
+    anyhow::bail,
+    console::style,
+    solana_message::Message,
+    solana_pubkey::Pubkey,
+    solana_stake_interface::{
+        instruction::{deactivate_stake, withdraw},
+        program::id as stake_program_id,
+        state::StakeStateV2,
+    },
+    solana_transaction::Transaction,
+};
 
 /// Commands related to staking operations
 #[derive(Debug, Clone)]
@@ -31,17 +50,196 @@ impl StakeCommand {
 }
 
 impl StakeCommand {
-    pub async fn process_command(&self, _ctx: &ScillaContext) -> ScillaResult<()> {
+    pub async fn process_command(&self, ctx: &ScillaContext) -> ScillaResult<()> {
         match self {
             StakeCommand::Create => todo!(),
             StakeCommand::Delegate => todo!(),
-            StakeCommand::Deactivate => todo!(),
-            StakeCommand::Withdraw => todo!(),
+            StakeCommand::Deactivate => {
+                let stake_pubkey: Pubkey =
+                    prompt_data("Enter Stake Account Pubkey to Deactivate:")?;
+                let res = show_spinner(
+                    self.spinner_msg(),
+                    deactivate_stake_account(ctx, &stake_pubkey),
+                )
+                .await;
+                if let Err(e) = res {
+                    print_error(format!("Deactivation failed: {}", e));
+                }
+            }
+            StakeCommand::Withdraw => {
+                let stake_pubkey: Pubkey =
+                    prompt_data("Enter Stake Account Pubkey to Withdraw from:")?;
+                let recipient: Pubkey = prompt_data("Enter Recipient Address:")?;
+                let amount: f64 = prompt_data("Enter Amount to Withdraw (SOL):")?;
+
+                let res = show_spinner(
+                    self.spinner_msg(),
+                    withdraw_stake(ctx, &stake_pubkey, &recipient, amount),
+                )
+                .await;
+                if let Err(e) = res {
+                    print_error(format!("Withdrawal failed: {}", e));
+                }
+            }
             StakeCommand::Merge => todo!(),
             StakeCommand::Split => todo!(),
             StakeCommand::Show => todo!(),
             StakeCommand::History => todo!(),
-            StakeCommand::GoBack => Ok(CommandExec::GoBack),
+            StakeCommand::GoBack => return Ok(CommandExec::GoBack),
+        }
+
+        Ok(CommandExec::Process(()))
+    }
+}
+
+async fn deactivate_stake_account(
+    ctx: &ScillaContext,
+    stake_pubkey: &Pubkey,
+) -> anyhow::Result<()> {
+    let account = ctx.rpc().get_account(stake_pubkey).await?;
+
+    if account.owner != stake_program_id() {
+        bail!("Account is not owned by the stake program");
+    }
+
+    let stake_state: StakeStateV2 = bincode::deserialize(&account.data)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize stake account: {}", e))?;
+
+    match stake_state {
+        StakeStateV2::Stake(meta, stake, _) => {
+            if stake.delegation.deactivation_epoch != u64::MAX {
+                bail!(
+                    "Stake is already deactivating at epoch {}",
+                    stake.delegation.deactivation_epoch
+                );
+            }
+
+            if meta.authorized.staker != *ctx.pubkey() {
+                bail!(
+                    "You are not the authorized staker. Authorized staker: {}",
+                    meta.authorized.staker
+                );
+            }
+        }
+        StakeStateV2::Initialized(_) => {
+            bail!("Stake account is initialized but not delegated");
+        }
+        _ => {
+            bail!("Stake account is not in a valid state for deactivation");
         }
     }
+
+    let authorized_pubkey = ctx.pubkey();
+    let instruction = deactivate_stake(stake_pubkey, authorized_pubkey);
+
+    let recent_blockhash = ctx.rpc().get_latest_blockhash().await?;
+    let message = Message::new(&[instruction], Some(authorized_pubkey));
+    let transaction = Transaction::new(&[ctx.keypair()], message, recent_blockhash);
+
+    let signature = ctx.rpc().send_and_confirm_transaction(&transaction).await?;
+
+    println!(
+        "\n{} {}\n{}\n{}",
+        style("Stake Deactivated Successfully!").green().bold(),
+        style("(Cooldown will take 1-2 epochs ≈ 2-4 days)").yellow(),
+        style(format!("Stake Account: {}", stake_pubkey)).yellow(),
+        style(format!("Signature: {}", signature)).cyan()
+    );
+
+    Ok(())
+}
+
+async fn withdraw_stake(
+    ctx: &ScillaContext,
+    stake_pubkey: &Pubkey,
+    recipient: &Pubkey,
+    amount_sol: f64,
+) -> anyhow::Result<()> {
+    if amount_sol <= 0.0 {
+        bail!("Withdrawal amount must be greater than 0");
+    }
+
+    let lamports = (amount_sol * LAMPORTS_PER_SOL as f64) as u64;
+
+    let account = ctx.rpc().get_account(stake_pubkey).await?;
+
+    if account.owner != stake_program_id() {
+        bail!("Account is not owned by the stake program");
+    }
+
+    let stake_state: StakeStateV2 = bincode::deserialize(&account.data)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize stake account: {}", e))?;
+
+    match stake_state {
+        StakeStateV2::Stake(meta, stake, _) => {
+            if meta.authorized.withdrawer != *ctx.pubkey() {
+                bail!(
+                    "You are not the authorized withdrawer. Authorized withdrawer: {}",
+                    meta.authorized.withdrawer
+                );
+            }
+
+            if stake.delegation.deactivation_epoch == u64::MAX {
+                bail!(
+                    "Stake is still active. You must deactivate it first and wait for the \
+                     cooldown period."
+                );
+            }
+
+            let epoch_info = ctx.rpc().get_epoch_info().await?;
+            if epoch_info.epoch <= stake.delegation.deactivation_epoch {
+                let epochs_remaining = stake.delegation.deactivation_epoch - epoch_info.epoch;
+                bail!(
+                    "Stake is still cooling down. Current epoch: {}, deactivation epoch: {}, \
+                     epochs remaining: {}",
+                    epoch_info.epoch,
+                    stake.delegation.deactivation_epoch,
+                    epochs_remaining
+                );
+            }
+        }
+        StakeStateV2::Initialized(meta) => {
+            if meta.authorized.withdrawer != *ctx.pubkey() {
+                bail!(
+                    "You are not the authorized withdrawer. Authorized withdrawer: {}",
+                    meta.authorized.withdrawer
+                );
+            }
+        }
+        StakeStateV2::Uninitialized => {
+            bail!("Stake account is uninitialized");
+        }
+        StakeStateV2::RewardsPool => {
+            bail!("Cannot withdraw from rewards pool");
+        }
+    }
+
+    if lamports > account.lamports {
+        bail!(
+            "Insufficient balance. Have {:.6} SOL, trying to withdraw {:.6} SOL",
+            account.lamports as f64 / LAMPORTS_PER_SOL as f64,
+            amount_sol
+        );
+    }
+
+    let authorized_pubkey = ctx.pubkey();
+
+    let instruction = withdraw(stake_pubkey, authorized_pubkey, recipient, lamports, None);
+
+    let recent_blockhash = ctx.rpc().get_latest_blockhash().await?;
+    let message = Message::new(&[instruction], Some(authorized_pubkey));
+    let transaction = Transaction::new(&[ctx.keypair()], message, recent_blockhash);
+
+    let signature = ctx.rpc().send_and_confirm_transaction(&transaction).await?;
+
+    println!(
+        "\n{} {}\n{}\n{}\n{}",
+        style("Stake Withdrawn Successfully!").green().bold(),
+        style(format!("From Stake Account: {}", stake_pubkey)).yellow(),
+        style(format!("To Recipient: {}", recipient)).yellow(),
+        style(format!("Amount: {} SOL", amount_sol)).cyan(),
+        style(format!("Signature: {}", signature)).cyan()
+    );
+
+    Ok(())
 }
