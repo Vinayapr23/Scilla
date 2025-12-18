@@ -1,6 +1,12 @@
 use {
     crate::{
-        commands::CommandExec, constants::ACTIVE_STAKE_EPOCH_BOUND, context::ScillaContext, error::ScillaResult, misc::helpers::{lamports_to_sol, sol_to_lamports}, prompt::prompt_data, ui::show_spinner
+        commands::CommandExec,
+        constants::ACTIVE_STAKE_EPOCH_BOUND,
+        context::ScillaContext,
+        error::ScillaResult,
+        misc::helpers::{lamports_to_sol, sol_to_lamports},
+        prompt::prompt_data,
+        ui::show_spinner,
     },
     anyhow::bail,
     console::style,
