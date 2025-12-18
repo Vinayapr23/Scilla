@@ -1,11 +1,6 @@
 use {
     crate::{
-        commands::CommandExec,
-        context::ScillaContext,
-        error::ScillaResult,
-        misc::helpers::{lamports_to_sol, sol_to_lamports},
-        prompt::prompt_data,
-        ui::show_spinner,
+        commands::CommandExec, constants::ACTIVE_STAKE_EPOCH_CONSTANT, context::ScillaContext, error::ScillaResult, misc::helpers::{lamports_to_sol, sol_to_lamports}, prompt::prompt_data, ui::show_spinner
     },
     anyhow::bail,
     console::style,
@@ -101,14 +96,14 @@ async fn process_deactivate_stake_account(
 
     match stake_state {
         StakeStateV2::Stake(meta, stake, _) => {
-            if stake.delegation.deactivation_epoch != u64::MAX {
+            if stake.delegation.deactivation_epoch != ACTIVE_STAKE_EPOCH_CONSTANT {
                 bail!(
                     "Stake is already deactivating at epoch {}",
                     stake.delegation.deactivation_epoch
                 );
             }
 
-            if meta.authorized.staker != *ctx.pubkey() {
+            if &meta.authorized.staker != ctx.pubkey() {
                 bail!(
                     "You are not the authorized staker. Authorized staker: {}",
                     meta.authorized.staker
@@ -166,14 +161,14 @@ async fn process_withdraw_stake(
 
     match stake_state {
         StakeStateV2::Stake(meta, stake, _) => {
-            if meta.authorized.withdrawer != *ctx.pubkey() {
+            if &meta.authorized.withdrawer != ctx.pubkey() {
                 bail!(
                     "You are not the authorized withdrawer. Authorized withdrawer: {}",
                     meta.authorized.withdrawer
                 );
             }
 
-            if stake.delegation.deactivation_epoch == u64::MAX {
+            if stake.delegation.deactivation_epoch == ACTIVE_STAKE_EPOCH_CONSTANT {
                 bail!(
                     "Stake is still active. You must deactivate it first and wait for the \
                      cooldown period."
@@ -193,7 +188,7 @@ async fn process_withdraw_stake(
             }
         }
         StakeStateV2::Initialized(meta) => {
-            if meta.authorized.withdrawer != *ctx.pubkey() {
+            if &meta.authorized.withdrawer != ctx.pubkey() {
                 bail!(
                     "You are not the authorized withdrawer. Authorized withdrawer: {}",
                     meta.authorized.withdrawer
@@ -216,12 +211,12 @@ async fn process_withdraw_stake(
         );
     }
 
-    let authorized_pubkey = ctx.pubkey();
+    let withdrawer_pubkey = ctx.pubkey();
 
-    let instruction = withdraw(stake_pubkey, authorized_pubkey, recipient, lamports, None);
+    let instruction = withdraw(stake_pubkey, withdrawer_pubkey, recipient, lamports, None);
 
     let recent_blockhash = ctx.rpc().get_latest_blockhash().await?;
-    let message = Message::new(&[instruction], Some(authorized_pubkey));
+    let message = Message::new(&[instruction], Some(withdrawer_pubkey));
     let transaction = Transaction::new(&[ctx.keypair()], message, recent_blockhash);
 
     let signature = ctx.rpc().send_and_confirm_transaction(&transaction).await?;
