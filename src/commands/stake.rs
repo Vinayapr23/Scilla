@@ -1,6 +1,6 @@
 use {
     crate::{
-        commands::CommandExec, constants::ACTIVE_STAKE_EPOCH_CONSTANT, context::ScillaContext, error::ScillaResult, misc::helpers::{lamports_to_sol, sol_to_lamports}, prompt::prompt_data, ui::show_spinner
+        commands::CommandExec, constants::ACTIVE_STAKE_EPOCH_BOUND, context::ScillaContext, error::ScillaResult, misc::helpers::{lamports_to_sol, sol_to_lamports}, prompt::prompt_data, ui::show_spinner
     },
     anyhow::bail,
     console::style,
@@ -96,7 +96,7 @@ async fn process_deactivate_stake_account(
 
     match stake_state {
         StakeStateV2::Stake(meta, stake, _) => {
-            if stake.delegation.deactivation_epoch != ACTIVE_STAKE_EPOCH_CONSTANT {
+            if stake.delegation.deactivation_epoch != ACTIVE_STAKE_EPOCH_BOUND {
                 bail!(
                     "Stake is already deactivating at epoch {}",
                     stake.delegation.deactivation_epoch
@@ -168,7 +168,7 @@ async fn process_withdraw_stake(
                 );
             }
 
-            if stake.delegation.deactivation_epoch == ACTIVE_STAKE_EPOCH_CONSTANT {
+            if stake.delegation.deactivation_epoch == ACTIVE_STAKE_EPOCH_BOUND {
                 bail!(
                     "Stake is still active. You must deactivate it first and wait for the \
                      cooldown period."
