@@ -114,13 +114,8 @@ mod tests {
 
     #[test]
     fn test_expand_tilde_with_home_prefix() {
-        let Some(home) = env::home_dir() else {
-            eprintln!("Skipping: HOME not set");
-            return;
-        };
-        let result = expand_tilde("~/foo/bar");
-        let expected = home.join("foo/bar");
-        assert_eq!(result, expected, "~/foo/bar should expand to $HOME/foo/bar");
+        let home = env::home_dir().expect("HOME should be set");
+        assert_eq!(expand_tilde("~/foo/bar"), home.join("foo/bar"));
     }
 
     #[test]
