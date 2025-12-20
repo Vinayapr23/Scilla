@@ -151,6 +151,36 @@ where
         .with_context(|| format!("Failed to deserialize {}", ctx))
 }
 
+pub fn decode_base64(encoded: &str) -> anyhow::Result<Vec<u8>> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+
+    let trimmed = encoded.trim();
+    if trimmed.is_empty() {
+        bail!("Encoded data cannot be empty");
+    }
+
+    STANDARD.decode(trimmed).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to decode Base64: {}. Please ensure the data is valid Base64 encoded.",
+            e
+        )
+    })
+}
+
+pub fn decode_base58(encoded: &str) -> anyhow::Result<Vec<u8>> {
+    let trimmed = encoded.trim();
+    if trimmed.is_empty() {
+        bail!("Encoded data cannot be empty");
+    }
+
+    bs58::decode(trimmed).into_vec().map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to decode Base58: {}. Please ensure the data is valid Base58 encoded.",
+            e
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

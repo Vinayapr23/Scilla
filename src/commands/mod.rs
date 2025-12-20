@@ -1,7 +1,8 @@
 use {
     crate::{
         commands::{
-            account::AccountCommand, cluster::ClusterCommand, config::ConfigCommand, stake::StakeCommand, transaction::TransactionCommand, vote::VoteCommand
+            account::AccountCommand, cluster::ClusterCommand, config::ConfigCommand,
+            stake::StakeCommand, transaction::TransactionCommand, vote::VoteCommand,
         },
         context::ScillaContext,
         error::ScillaResult,
@@ -17,8 +18,8 @@ pub mod account;
 pub mod cluster;
 pub mod config;
 pub mod stake;
-pub mod vote;
 pub mod transaction;
+pub mod vote;
 
 pub enum CommandExec<T> {
     Process(T),
@@ -64,6 +65,7 @@ pub enum CommandGroup {
     Cluster,
     Stake,
     Vote,
+    Transaction,
     ScillaConfig,
     Exit,
 }
@@ -75,6 +77,7 @@ impl fmt::Display for CommandGroup {
             CommandGroup::Cluster => "Cluster",
             CommandGroup::Stake => "Stake",
             CommandGroup::Vote => "Vote",
+            CommandGroup::Transaction => "Transaction",
             CommandGroup::ScillaConfig => "ScillaConfig",
             CommandGroup::Exit => "Exit",
         };
