@@ -4,6 +4,7 @@ use {
     bincode::Options,
     solana_account::Account,
     solana_epoch_info::EpochInfo,
+    base64::Engine,
     solana_instruction::Instruction,
     solana_keypair::{EncodableKey, Keypair, Signature, Signer},
     solana_message::Message,
@@ -12,7 +13,6 @@ use {
     std::{path::Path, str::FromStr},
     tokio::try_join,
 };
-use base64::Engine;
 
 pub fn trim_and_parse<T: FromStr>(s: &str, field_name: &str) -> anyhow::Result<Option<T>> {
     let trimmed = s.trim();
@@ -153,19 +153,19 @@ where
 }
 
 pub fn decode_base64(encoded: &str) -> anyhow::Result<Vec<u8>> {
-    
-
     let trimmed = encoded.trim();
     if trimmed.is_empty() {
         bail!("Encoded data cannot be empty");
     }
 
-     base64::engine::general_purpose::STANDARD.decode(trimmed).map_err(|e| {
-        anyhow::anyhow!(
-            "Failed to decode Base64: {}. Please ensure the data is valid Base64 encoded.",
-            e
-        )
-    })
+    base64::engine::general_purpose::STANDARD
+        .decode(trimmed)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to decode Base64: {}. Please ensure the data is valid Base64 encoded.",
+                e
+            )
+        })
 }
 
 pub fn decode_base58(encoded: &str) -> anyhow::Result<Vec<u8>> {
