@@ -75,6 +75,13 @@ impl TransactionCommand {
                 .await?;
             }
             TransactionCommand::SendTransaction => {
+                println!(
+                    "{}",
+                    style("ℹ Note: Only VersionedTransaction format is supported")
+                        .yellow()
+                        .dim()
+                );
+
                 let encoding = Select::new(
                     "Select encoding format:",
                     vec![UiTransactionEncoding::Base64, UiTransactionEncoding::Base58],
@@ -82,6 +89,7 @@ impl TransactionCommand {
                 .prompt()?;
 
                 let encoded_tx: String = prompt_data("Enter encoded transaction:")?;
+
                 show_spinner(
                     self.spinner_msg(),
                     process_send_transaction(ctx, encoding, &encoded_tx),
@@ -174,15 +182,16 @@ async fn process_fetch_transaction(
     ctx: &ScillaContext,
     signature: &Signature,
 ) -> anyhow::Result<()> {
-    let config = RpcTransactionConfig {
-        encoding: Some(UiTransactionEncoding::JsonParsed),
-        commitment: Some(ctx.rpc().commitment()),
-        max_supported_transaction_version: Some(0),
-    };
-
     let tx = ctx
         .rpc()
-        .get_transaction_with_config(signature, config)
+        .get_transaction_with_config(
+            signature,
+            RpcTransactionConfig {
+                encoding: Some(UiTransactionEncoding::JsonParsed),
+                commitment: Some(ctx.rpc().commitment()),
+                max_supported_transaction_version: Some(0),
+            },
+        )
         .await?;
 
     let mut table = Table::new();
@@ -223,76 +232,78 @@ async fn process_fetch_transaction(
     println!("\n{}", style("TRANSACTION DETAILS").green().bold());
     println!("{}", table);
 
-    if let EncodedTransaction::Json(ui_tx) = &tx.transaction.transaction {
-        match &ui_tx.message {
-            UiMessage::Parsed(parsed_msg) => {
-                println!("\n{}", style("TRANSACTION MESSAGE").cyan().bold());
+    let EncodedTransaction::Json(ui_tx) = &tx.transaction.transaction else {
+        anyhow::bail!("Transaction encoding is not JSON");
+    };
 
-                let mut msg_table = Table::new();
-                msg_table
-                    .load_preset(UTF8_FULL)
-                    .set_header(vec![
-                        Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-                        Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
-                    ])
-                    .add_row(vec![
-                        Cell::new("Account Keys"),
-                        Cell::new(parsed_msg.account_keys.len().to_string()),
-                    ])
-                    .add_row(vec![
-                        Cell::new("Recent Blockhash"),
-                        Cell::new(parsed_msg.recent_blockhash.clone()),
+    match &ui_tx.message {
+        UiMessage::Parsed(parsed_msg) => {
+            println!("\n{}", style("TRANSACTION MESSAGE").cyan().bold());
+
+            let mut msg_table = Table::new();
+            msg_table
+                .load_preset(UTF8_FULL)
+                .set_header(vec![
+                    Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
+                    Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+                ])
+                .add_row(vec![
+                    Cell::new("Account Keys"),
+                    Cell::new(parsed_msg.account_keys.len().to_string()),
+                ])
+                .add_row(vec![
+                    Cell::new("Recent Blockhash"),
+                    Cell::new(parsed_msg.recent_blockhash.clone()),
+                ]);
+
+            println!("{}", msg_table);
+
+            if !parsed_msg.account_keys.is_empty() {
+                println!("\n{}", style("ACCOUNT KEYS").cyan().bold());
+                let mut accounts_table = Table::new();
+                accounts_table.load_preset(UTF8_FULL).set_header(vec![
+                    Cell::new("Index").add_attribute(comfy_table::Attribute::Bold),
+                    Cell::new("Pubkey").add_attribute(comfy_table::Attribute::Bold),
+                    Cell::new("Signer").add_attribute(comfy_table::Attribute::Bold),
+                    Cell::new("Writable").add_attribute(comfy_table::Attribute::Bold),
+                ]);
+
+                for (idx, account) in parsed_msg.account_keys.iter().enumerate() {
+                    accounts_table.add_row(vec![
+                        Cell::new(idx.to_string()),
+                        Cell::new(account.pubkey.clone()),
+                        Cell::new(if account.signer { "✓" } else { "" }),
+                        Cell::new(if account.writable { "✓" } else { "" }),
                     ]);
-
-                println!("{}", msg_table);
-
-                if !parsed_msg.account_keys.is_empty() {
-                    println!("\n{}", style("ACCOUNT KEYS").cyan().bold());
-                    let mut accounts_table = Table::new();
-                    accounts_table.load_preset(UTF8_FULL).set_header(vec![
-                        Cell::new("Index").add_attribute(comfy_table::Attribute::Bold),
-                        Cell::new("Pubkey").add_attribute(comfy_table::Attribute::Bold),
-                        Cell::new("Signer").add_attribute(comfy_table::Attribute::Bold),
-                        Cell::new("Writable").add_attribute(comfy_table::Attribute::Bold),
-                    ]);
-
-                    for (idx, account) in parsed_msg.account_keys.iter().enumerate() {
-                        accounts_table.add_row(vec![
-                            Cell::new(idx.to_string()),
-                            Cell::new(account.pubkey.clone()),
-                            Cell::new(if account.signer { "✓" } else { "" }),
-                            Cell::new(if account.writable { "✓" } else { "" }),
-                        ]);
-                    }
-                    println!("{}", accounts_table);
                 }
+                println!("{}", accounts_table);
             }
-            UiMessage::Raw(raw_msg) => {
-                println!("\n{}", style("TRANSACTION MESSAGE (Raw)").cyan().bold());
+        }
+        UiMessage::Raw(raw_msg) => {
+            println!("\n{}", style("TRANSACTION MESSAGE (Raw)").cyan().bold());
 
-                let mut msg_table = Table::new();
-                msg_table
-                    .load_preset(UTF8_FULL)
-                    .set_header(vec![
-                        Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-                        Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
-                    ])
-                    .add_row(vec![
-                        Cell::new("Account Keys"),
-                        Cell::new(raw_msg.account_keys.len().to_string()),
-                    ])
-                    .add_row(vec![
-                        Cell::new("Recent Blockhash"),
-                        Cell::new(raw_msg.recent_blockhash.clone()),
-                    ]);
+            let mut msg_table = Table::new();
+            msg_table
+                .load_preset(UTF8_FULL)
+                .set_header(vec![
+                    Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
+                    Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+                ])
+                .add_row(vec![
+                    Cell::new("Account Keys"),
+                    Cell::new(raw_msg.account_keys.len().to_string()),
+                ])
+                .add_row(vec![
+                    Cell::new("Recent Blockhash"),
+                    Cell::new(raw_msg.recent_blockhash.clone()),
+                ]);
 
-                println!("{}", msg_table);
+            println!("{}", msg_table);
 
-                if !raw_msg.account_keys.is_empty() {
-                    println!("\n{}", style("ACCOUNT KEYS").cyan().bold());
-                    for (idx, key) in raw_msg.account_keys.iter().enumerate() {
-                        println!("  {}. {}", idx, key);
-                    }
+            if !raw_msg.account_keys.is_empty() {
+                println!("\n{}", style("ACCOUNT KEYS").cyan().bold());
+                for (idx, key) in raw_msg.account_keys.iter().enumerate() {
+                    println!("  {}. {}", idx, key);
                 }
             }
         }
