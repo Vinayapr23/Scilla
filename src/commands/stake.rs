@@ -103,21 +103,24 @@ impl StakeCommand {
                     prompt_data("Enter Stake Account Pubkey: ")?;
                 let source_stake_account_pubkey: Pubkey =
                     prompt_data("Enter Source Stake Account Pubkey: ")?;
+                let stake_authority_keypair_path: PathBuf = prompt_data("Enter Stake Authority Keypair PathL ")?;
 
                 show_spinner(
                     self.spinner_msg(),
                     process_merge_stake(
                         ctx,
-                        destination_stake_account_pubkey,
-                        source_stake_account_pubkey,
+                        &destination_stake_account_pubkey,
+                        &source_stake_account_pubkey,
+                        &stake_authority_keypair_path
                     ),
                 )
                 .await?;
             }
             StakeCommand::Split => {
                 let stake_account_pubkey: Pubkey = prompt_data("Enter Stake Account Pubkey: ")?;
-                let split_stake_account_keypair_path: PathBuf =
+                let split_stake_account_keypair_path: Pubkey =
                     prompt_data("Enter New Stake Account Keypair Path For Split: ")?;
+                let stake_authority_keypair_path: PathBuf = prompt_data("Enter Stake Authority Keypair Path: ")?;
                 let amount_to_split: f64 = prompt_data("Enter Stake Amount (SOL) to Split: ")?;
 
                 show_spinner(
@@ -126,6 +129,7 @@ impl StakeCommand {
                         ctx,
                         &stake_account_pubkey,
                         &split_stake_account_keypair_path,
+                        &stake_authority_keypair_path,
                         amount_to_split,
                     ),
                 )
@@ -288,9 +292,11 @@ async fn process_withdraw_stake(
 
 async fn process_merge_stake(
     ctx: &ScillaContext,
-    destination_stake_account_pubkey: Pubkey,
-    source_stake_account_pubkey: Pubkey,
+    destination_stake_account_pubkey: &Pubkey,
+    source_stake_account_pubkey: &Pubkey,
+    stake_authority_keypair_path: &PathBuf,
 ) -> anyhow::Result<()> {
+    let stake_authority_keypair = read_keypair_from_path(stake_authority_keypair_path)?;
     // checks for unique pubkeys
     if destination_stake_account_pubkey == source_stake_account_pubkey {
         bail!(
@@ -303,8 +309,8 @@ async fn process_merge_stake(
     let stake_accounts = ctx
         .rpc()
         .get_multiple_accounts(&[
-            destination_stake_account_pubkey,
-            source_stake_account_pubkey,
+            *destination_stake_account_pubkey,
+            *source_stake_account_pubkey,
         ])
         .await?;
 
@@ -338,8 +344,6 @@ async fn process_merge_stake(
 
     let source_stake_state: StakeStateV2 = bincode::deserialize(&source_stake_account.data)
         .map_err(|err| anyhow!("Failed to deserialie source stake account: {}", err))?;
-
-    let stake_authority_keypair = ctx.keypair();
 
     match &destination_stake_state {
         StakeStateV2::Initialized(meta) => {
@@ -399,11 +403,11 @@ async fn process_merge_stake(
         &stake_authority_pubkey,
     );
 
-    let signature = build_and_send_tx(ctx, &ixs, &[ctx.keypair()]).await?;
+    let signature = build_and_send_tx(ctx, &ixs, &[ctx.keypair(), &stake_authority_keypair]).await?;
 
     println!(
         "{}\n{}\n{}\n{}\n{}\n{}",
-        style("Stake Delegated successfully!").yellow().bold(),
+        style("Stake Merged successfully!").yellow().bold(),
         style(format!(
             "Destination Stake Account: {}",
             destination_stake_account_pubkey
@@ -429,22 +433,21 @@ async fn process_merge_stake(
 async fn process_split_stake(
     ctx: &ScillaContext,
     stake_account_pubkey: &Pubkey,
-    split_stake_account_keypair_path: &PathBuf,
+    split_stake_account_pubkey: &Pubkey,
+    stake_authority_keypair_path: &PathBuf,
     amount_to_split: f64,
 ) -> anyhow::Result<()> {
-    let split_stake_account_keypair = read_keypair_from_path(split_stake_account_keypair_path)?;
-    let split_stake_account_pubkey = split_stake_account_keypair.pubkey();
-    let stake_authority_keypair = ctx.keypair();
+    let stake_authority_keypair = read_keypair_from_path(stake_authority_keypair_path)?;
+    let stake_authority_pubkey = stake_authority_keypair.pubkey();
+    let lamports: u64 = sol_to_lamports(amount_to_split);
 
-    if stake_account_pubkey == &split_stake_account_pubkey {
+    if stake_account_pubkey == split_stake_account_pubkey {
         bail!(
             "Existing Stake Account {} and New Split Stake Account {} must not be the same",
             stake_account_pubkey,
             split_stake_account_pubkey
         );
     }
-
-    let lamports: u64 = sol_to_lamports(amount_to_split);
 
     let stake_minimum_delegation = ctx.rpc().get_stake_minimum_delegation().await?;
 
@@ -458,19 +461,28 @@ async fn process_split_stake(
 
     let ix = instruction::split(
         stake_account_pubkey,
-        &stake_authority_keypair.pubkey(),
+        &stake_authority_pubkey,
         lamports,
         &split_stake_account_pubkey,
     );
 
-    let signers: Vec<&dyn Signer> = vec![ctx.keypair(), &stake_authority_keypair];
-
-    let signature = build_and_send_tx(ctx, &ix, &signers).await?;
+    let signature = build_and_send_tx(ctx, &ix, &[ctx.keypair(), &stake_authority_keypair]).await?;
 
     println!(
-        "{}\n{}",
-        style("Split Stake successfull!").yellow().bold(),
-        style(format!("Signature: {signature}")).green()
+        "{}\n{}\n{}\n{}\n{}",
+        style("Split Stake successfully!").yellow().bold(),
+        style(format!(
+            "Stake Account: {}",
+            stake_account_pubkey
+        ))
+        .yellow(),
+        style(format!(
+            "Split Stake Account: {}",
+            split_stake_account_pubkey
+        ))
+        .yellow(),
+        style(format!("Stake Authority: {}", stake_authority_pubkey)).yellow(),
+        style(format!("Signature: {}", signature)).green()
     );
 
     Ok(())
