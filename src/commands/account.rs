@@ -21,10 +21,8 @@ use {
     std::fmt,
 };
 
-use solana_native_token::sol_str_to_lamports;
 use solana_sdk::{
-    instruction::{AccountMeta, Instruction},
-    transaction::Transaction,
+    instruction::{AccountMeta, Instruction}, native_token::sol_str_to_lamports, transaction::Transaction
 };
 
 /// Commands related to wallet or account management
