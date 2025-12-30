@@ -1,5 +1,3 @@
-use crate::{constants::LAMPORTS_PER_SOL};
-
 use {
     crate::{
         commands::CommandExec,
@@ -95,8 +93,7 @@ impl AccountCommand {
 }
 
 async fn request_sol_airdrop(ctx: &ScillaContext) -> anyhow::Result<()> {
-    // request exactly 1 sol, not 1 lamport
-    let sig = ctx.rpc().request_airdrop(ctx.pubkey(), LAMPORTS_PER_SOL).await;
+    let sig = ctx.rpc().request_airdrop(ctx.pubkey(), 1).await;
     match sig {
         Ok(signature) => {
             println!(

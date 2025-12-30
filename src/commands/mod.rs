@@ -3,6 +3,7 @@ use {
         commands::{
             account::AccountCommand, cluster::ClusterCommand, config::ConfigCommand,
             stake::StakeCommand, transaction::TransactionCommand, vote::VoteCommand,
+            wallet::WalletCommand, 
         },
         context::ScillaContext,
         error::ScillaResult,
@@ -19,6 +20,7 @@ pub mod cluster;
 pub mod config;
 pub mod stake;
 pub mod transaction;
+pub mod wallet;
 pub mod vote;
 
 pub enum CommandExec<T> {
@@ -42,6 +44,7 @@ pub enum Command {
     Vote(VoteCommand),
     Transaction(TransactionCommand),
     ScillaConfig(ConfigCommand),
+    Wallet(WalletCommand),
     Exit,
 }
 
@@ -56,6 +59,7 @@ impl Command {
                 transaction_command.process_command(ctx).await
             }
             Command::ScillaConfig(config_command) => config_command.process_command().await,
+            Command::Wallet(wallet_command )=> wallet_command.process_command(ctx).await, 
             Command::Exit => Ok(CommandExec::Exit),
         }
     }
@@ -69,6 +73,7 @@ pub enum CommandGroup {
     Vote,
     Transaction,
     ScillaConfig,
+    Wallet, 
     Exit,
 }
 
@@ -81,6 +86,7 @@ impl fmt::Display for CommandGroup {
             CommandGroup::Vote => "Vote",
             CommandGroup::Transaction => "Transaction",
             CommandGroup::ScillaConfig => "ScillaConfig",
+            CommandGroup::Wallet => "Wallet", 
             CommandGroup::Exit => "Exit",
         };
         write!(f, "{command}")

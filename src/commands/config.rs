@@ -3,22 +3,16 @@ use {
         commands::CommandExec,
         config::{ScillaConfig, scilla_config_path},
         error::ScillaResult,
-        misc::helpers::lamports_to_sol,
         prompt::prompt_data,
     },
     comfy_table::{Cell, Table, presets::UTF8_FULL},
     console::style,
     inquire::{Confirm, Select},
     solana_commitment_config::CommitmentLevel,
-    solana_keypair::Signer,
     std::{fmt, fs, path::PathBuf},
 };
 
-use solana_commitment_config::CommitmentConfig;
-use solana_rpc_client::rpc_client::RpcClient;
-use solana_sdk::signature::read_keypair_file;
-
-/// Commands related to configuration like RPC_URL , KEYAPAIR_PATH etc
+/// Commands related to configuration like RPC_URL , KEYAPAIR_PATH etca
 #[derive(Debug, Clone)]
 pub enum ConfigCommand {
     Show,
@@ -107,25 +101,6 @@ impl ConfigCommand {
 async fn show_config() -> anyhow::Result<()> {
     let config = ScillaConfig::load().await?;
 
-    //build rpc client from config so network matches rpc url
-    let rpc = RpcClient::new_with_commitment(
-        config.rpc_url.clone(),
-        CommitmentConfig {
-            commitment: config.commitment_level,
-        },
-    );
-
-    //derive wallet pubkey from keypair path
-    let wallet_pubkey = read_keypair_file(&config.keypair_path)
-        .map(|kp| kp.pubkey())
-        .ok();
-
-    //fetch balance if wallet loaded successfully
-    let wallet_balance = match &wallet_pubkey {
-        Some(pk) => rpc.get_balance(pk).ok(),
-        None => None,
-    };
-
     let mut table = Table::new();
     table
         .load_preset(UTF8_FULL)
@@ -142,18 +117,6 @@ async fn show_config() -> anyhow::Result<()> {
             Cell::new("Keypair Path"),
             Cell::new(config.keypair_path.display().to_string()),
         ]);
-
-    //extra wallet rows
-    if let Some(pk) = wallet_pubkey {
-        table.add_row(vec![Cell::new("Wallet Address"), Cell::new(pk.to_string())]);
-
-        if let Some(balance) = wallet_balance {
-            table.add_row(vec![
-                Cell::new("Wallet Balance (SOL)"),
-                Cell::new(format!("{:.6}", lamports_to_sol(balance))),
-            ]);
-        }
-    }
 
     println!("\n{}", style("SCILLA CONFIG").green().bold());
     println!("{}", table);
