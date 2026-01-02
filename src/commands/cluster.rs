@@ -1,7 +1,7 @@
 use {
     crate::{
-        commands::CommandExec, constants::LAMPORTS_PER_SOL, context::ScillaContext,
-        error::ScillaResult, ui::show_spinner,
+        commands::CommandFlow, constants::LAMPORTS_PER_SOL, context::ScillaContext,
+        ui::show_spinner,
     },
     comfy_table::{Cell, Table, presets::UTF8_FULL},
     console::style,
@@ -56,54 +56,68 @@ impl fmt::Display for ClusterCommand {
 }
 
 impl ClusterCommand {
-    pub async fn process_command(&self, ctx: &ScillaContext) -> ScillaResult<()> {
+    pub async fn process_command(&self, ctx: &ScillaContext) -> CommandFlow<()> {
         match self {
             ClusterCommand::EpochInfo => {
-                show_spinner(self.spinner_msg(), fetch_epoch_info(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_epoch_info(ctx)).await;
             }
             ClusterCommand::CurrentSlot => {
-                show_spinner(self.spinner_msg(), fetch_current_slot(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_current_slot(ctx)).await;
             }
             ClusterCommand::BlockHeight => {
-                show_spinner(self.spinner_msg(), fetch_block_height(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_block_height(ctx)).await;
             }
             ClusterCommand::BlockTime => {
-                show_spinner(self.spinner_msg(), fetch_block_time(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_block_time(ctx)).await;
             }
             ClusterCommand::Validators => {
-                show_spinner(self.spinner_msg(), fetch_validators(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_validators(ctx)).await;
             }
             ClusterCommand::SupplyInfo => {
-                show_spinner(self.spinner_msg(), fetch_supply_info(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_supply_info(ctx)).await;
             }
             ClusterCommand::Inflation => {
-                show_spinner(self.spinner_msg(), fetch_inflation_info(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_inflation_info(ctx)).await;
             }
             ClusterCommand::ClusterVersion => {
-                show_spinner(self.spinner_msg(), fetch_cluster_version(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_cluster_version(ctx)).await;
             }
             ClusterCommand::GoBack => {
-                return Ok(CommandExec::GoBack);
+                return CommandFlow::GoBack;
             }
         }
 
-        Ok(CommandExec::Process(()))
+        CommandFlow::Process(())
     }
 }
 
 async fn fetch_epoch_info(ctx: &ScillaContext) -> anyhow::Result<()> {
     let epoch_info = ctx.rpc().get_epoch_info().await?;
 
+    let epoch_progress = if epoch_info.slots_in_epoch > 0 {
+        (epoch_info.slot_index as f64 / epoch_info.slots_in_epoch as f64) * 100.0
+    } else {
+        0.0
+    };
+
     let mut table = Table::new();
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![
             Cell::new("Epoch"),
             Cell::new(format!("{}", epoch_info.epoch)),
+        ])
+        .add_row(vec![
+            Cell::new("Epoch Progress"),
+            Cell::new(format!("{:.2}%", epoch_progress)),
         ])
         .add_row(vec![
             Cell::new("Slot Index"),
@@ -139,8 +153,12 @@ async fn fetch_current_slot(ctx: &ScillaContext) -> anyhow::Result<()> {
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![
             Cell::new("Current Slot"),
@@ -160,8 +178,12 @@ async fn fetch_block_height(ctx: &ScillaContext) -> anyhow::Result<()> {
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![
             Cell::new("Block Height"),
@@ -186,8 +208,12 @@ async fn fetch_block_time(ctx: &ScillaContext) -> anyhow::Result<()> {
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![Cell::new("Slot"), Cell::new(format!("{slot}"))])
         .add_row(vec![
@@ -210,8 +236,12 @@ async fn fetch_validators(ctx: &ScillaContext) -> anyhow::Result<()> {
     summary_table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![
             Cell::new("Current Validators"),
@@ -239,8 +269,8 @@ async fn fetch_validators(ctx: &ScillaContext) -> anyhow::Result<()> {
             let stake_sol = (validator.activated_stake as f64).div(LAMPORTS_PER_SOL as f64);
             validators_table.add_row(vec![
                 Cell::new(format!("{}", idx + 1)),
-                Cell::new(validator.node_pubkey.clone()),
-                Cell::new(validator.vote_pubkey.clone()),
+                Cell::new(&validator.node_pubkey),
+                Cell::new(&validator.vote_pubkey),
                 Cell::new(format!("{stake_sol:.2}")),
             ]);
         }
@@ -264,7 +294,9 @@ async fn fetch_supply_info(ctx: &ScillaContext) -> anyhow::Result<()> {
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
             Cell::new("Value (SOL)").add_attribute(comfy_table::Attribute::Bold),
             Cell::new("Percentage").add_attribute(comfy_table::Attribute::Bold),
         ])
@@ -296,8 +328,12 @@ async fn fetch_inflation_info(ctx: &ScillaContext) -> anyhow::Result<()> {
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![
             Cell::new("Epoch"),
@@ -329,12 +365,16 @@ async fn fetch_cluster_version(ctx: &ScillaContext) -> anyhow::Result<()> {
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![
             Cell::new("Solana Core"),
-            Cell::new(version.solana_core.clone()),
+            Cell::new(version.solana_core),
         ]);
 
     if let Some(feature_set) = version.feature_set {

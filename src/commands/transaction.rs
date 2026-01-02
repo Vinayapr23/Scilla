@@ -1,15 +1,13 @@
 use {
     crate::{
-        commands::CommandExec,
+        commands::CommandFlow,
         context::ScillaContext,
-        error::ScillaResult,
         misc::helpers::{bincode_deserialize, decode_base58, decode_base64},
-        prompt::prompt_data,
+        prompt::{prompt_input_data, prompt_select_data},
         ui::show_spinner,
     },
     comfy_table::{Cell, Table, presets::UTF8_FULL},
     console::style,
-    inquire::Select,
     solana_rpc_client_api::config::RpcTransactionConfig,
     solana_signature::Signature,
     solana_transaction::versioned::VersionedTransaction,
@@ -51,31 +49,31 @@ impl fmt::Display for TransactionCommand {
 }
 
 impl TransactionCommand {
-    pub async fn process_command(&self, ctx: &ScillaContext) -> ScillaResult<()> {
+    pub async fn process_command(&self, ctx: &ScillaContext) -> CommandFlow<()> {
         match self {
             TransactionCommand::CheckConfirmation => {
-                let signature: Signature = prompt_data("Enter transaction signature:")?;
+                let signature: Signature = prompt_input_data("Enter transaction signature:");
                 show_spinner(
                     self.spinner_msg(),
                     process_check_confirmation(ctx, &signature),
                 )
-                .await?;
+                .await;
             }
             TransactionCommand::FetchStatus => {
-                let signature: Signature = prompt_data("Enter transaction signature:")?;
+                let signature: Signature = prompt_input_data("Enter transaction signature:");
                 show_spinner(
                     self.spinner_msg(),
                     process_fetch_transaction_status(ctx, &signature),
                 )
-                .await?;
+                .await;
             }
             TransactionCommand::FetchTransaction => {
-                let signature: Signature = prompt_data("Enter transaction signature:")?;
+                let signature: Signature = prompt_input_data("Enter transaction signature:");
                 show_spinner(
                     self.spinner_msg(),
                     process_fetch_transaction(ctx, &signature),
                 )
-                .await?;
+                .await;
             }
             TransactionCommand::SendTransaction => {
                 println!(
@@ -85,24 +83,23 @@ impl TransactionCommand {
                         .dim()
                 );
 
-                let encoding = Select::new(
+                let encoding = prompt_select_data(
                     "Select encoding format:",
                     vec![UiTransactionEncoding::Base64, UiTransactionEncoding::Base58],
-                )
-                .prompt()?;
+                );
 
-                let encoded_tx: String = prompt_data("Enter encoded transaction:")?;
+                let encoded_tx: String = prompt_input_data("Enter encoded transaction:");
 
                 show_spinner(
                     self.spinner_msg(),
                     process_send_transaction(ctx, encoding, &encoded_tx),
                 )
-                .await?;
+                .await;
             }
-            TransactionCommand::GoBack => return Ok(CommandExec::GoBack),
+            TransactionCommand::GoBack => return CommandFlow::GoBack,
         }
 
-        Ok(CommandExec::Process(()))
+        CommandFlow::Process(())
     }
 }
 
@@ -122,17 +119,15 @@ async fn process_check_confirmation(
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
-        .add_row(vec![
-            Cell::new("Signature"),
-            Cell::new(signature.to_string()),
-        ])
-        .add_row(vec![
-            Cell::new("Status"),
-            Cell::new(status_styled.to_string()),
-        ]);
+        .add_row(vec![Cell::new("Signature"), Cell::new(signature)])
+        .add_row(vec![Cell::new("Status"), Cell::new(status_styled)]);
 
     println!("\n{}", style("TRANSACTION CONFIRMATION").green().bold());
     println!("{}", table);
@@ -144,7 +139,10 @@ async fn process_fetch_transaction_status(
     ctx: &ScillaContext,
     signature: &Signature,
 ) -> anyhow::Result<()> {
-    let status = ctx.rpc().get_signature_statuses(&[*signature]).await?;
+    let status = ctx
+        .rpc()
+        .get_signature_statuses_with_history(&[*signature])
+        .await?;
 
     let Some(Some(tx_status)) = status.value.first() else {
         anyhow::bail!("Transaction not found");
@@ -154,27 +152,52 @@ async fn process_fetch_transaction_status(
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
-        .add_row(vec![
-            Cell::new("Signature"),
-            Cell::new(signature.to_string()),
-        ])
-        .add_row(vec![
-            Cell::new("Slot"),
-            Cell::new(tx_status.slot.to_string()),
-        ])
-        .add_row(vec![
-            Cell::new("Status"),
-            Cell::new(if tx_status.err.is_none() {
-                style("Success").green().to_string()
-            } else {
-                style(format!("Error: {:?}", tx_status.err))
-                    .red()
-                    .to_string()
+        .add_row(vec![Cell::new("Signature"), Cell::new(signature)])
+        .add_row(vec![Cell::new("Slot"), Cell::new(tx_status.slot)]);
+
+    if let Some(confirmations) = tx_status.confirmations {
+        table.add_row(vec![Cell::new("Confirmations"), Cell::new(confirmations)]);
+    } else {
+        table.add_row(vec![
+            Cell::new("Confirmations"),
+            Cell::new(style("Finalized").green()),
+        ]);
+    }
+
+    if let Some(confirmation_status) = &tx_status.confirmation_status {
+        table.add_row(vec![
+            Cell::new("Confirmation Status"),
+            Cell::new(match confirmation_status {
+                solana_transaction_status::TransactionConfirmationStatus::Processed => {
+                    style("Processed").yellow().to_string()
+                }
+                solana_transaction_status::TransactionConfirmationStatus::Confirmed => {
+                    style("Confirmed").cyan().to_string()
+                }
+                solana_transaction_status::TransactionConfirmationStatus::Finalized => {
+                    style("Finalized").green().to_string()
+                }
             }),
         ]);
+    }
+
+    table.add_row(vec![
+        Cell::new("Status"),
+        Cell::new(if tx_status.err.is_none() {
+            style("Success").green().to_string()
+        } else {
+            style(format!("Error: {:?}", tx_status.err))
+                .red()
+                .to_string()
+        }),
+    ]);
 
     println!("\n{}", style("TRANSACTION STATUS").green().bold());
     println!("{}", table);
@@ -202,27 +225,22 @@ async fn process_fetch_transaction(
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
-        .add_row(vec![
-            Cell::new("Signature"),
-            Cell::new(signature.to_string()),
-        ])
-        .add_row(vec![Cell::new("Slot"), Cell::new(tx.slot.to_string())]);
+        .add_row(vec![Cell::new("Signature"), Cell::new(signature)])
+        .add_row(vec![Cell::new("Slot"), Cell::new(tx.slot)]);
 
     if let Some(block_time) = tx.block_time {
-        table.add_row(vec![
-            Cell::new("Block Time"),
-            Cell::new(block_time.to_string()),
-        ]);
+        table.add_row(vec![Cell::new("Block Time"), Cell::new(block_time)]);
     }
 
     if let Some(meta) = &tx.transaction.meta {
-        table.add_row(vec![
-            Cell::new("Fee (lamports)"),
-            Cell::new(meta.fee.to_string()),
-        ]);
+        table.add_row(vec![Cell::new("Fee (lamports)"), Cell::new(meta.fee)]);
         table.add_row(vec![
             Cell::new("Status"),
             Cell::new(if meta.err.is_none() {
@@ -248,16 +266,20 @@ async fn process_fetch_transaction(
             msg_table
                 .load_preset(UTF8_FULL)
                 .set_header(vec![
-                    Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-                    Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+                    Cell::new("Field")
+                        .add_attribute(comfy_table::Attribute::Bold)
+                        .fg(comfy_table::Color::Cyan),
+                    Cell::new("Value")
+                        .add_attribute(comfy_table::Attribute::Bold)
+                        .fg(comfy_table::Color::Cyan),
                 ])
                 .add_row(vec![
                     Cell::new("Account Keys"),
-                    Cell::new(parsed_msg.account_keys.len().to_string()),
+                    Cell::new(parsed_msg.account_keys.len()),
                 ])
                 .add_row(vec![
                     Cell::new("Recent Blockhash"),
-                    Cell::new(parsed_msg.recent_blockhash.clone()),
+                    Cell::new(&parsed_msg.recent_blockhash),
                 ]);
 
             println!("{}", msg_table);
@@ -274,8 +296,8 @@ async fn process_fetch_transaction(
 
                 for (idx, account) in parsed_msg.account_keys.iter().enumerate() {
                     accounts_table.add_row(vec![
-                        Cell::new(idx.to_string()),
-                        Cell::new(account.pubkey.clone()),
+                        Cell::new(idx),
+                        Cell::new(&account.pubkey),
                         Cell::new(if account.signer { "✓" } else { "" }),
                         Cell::new(if account.writable { "✓" } else { "" }),
                     ]);
@@ -290,16 +312,20 @@ async fn process_fetch_transaction(
             msg_table
                 .load_preset(UTF8_FULL)
                 .set_header(vec![
-                    Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-                    Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+                    Cell::new("Field")
+                        .add_attribute(comfy_table::Attribute::Bold)
+                        .fg(comfy_table::Color::Cyan),
+                    Cell::new("Value")
+                        .add_attribute(comfy_table::Attribute::Bold)
+                        .fg(comfy_table::Color::Cyan),
                 ])
                 .add_row(vec![
                     Cell::new("Account Keys"),
-                    Cell::new(raw_msg.account_keys.len().to_string()),
+                    Cell::new(raw_msg.account_keys.len()),
                 ])
                 .add_row(vec![
                     Cell::new("Recent Blockhash"),
-                    Cell::new(raw_msg.recent_blockhash.clone()),
+                    Cell::new(&raw_msg.recent_blockhash),
                 ]);
 
             println!("{}", msg_table);
@@ -333,9 +359,9 @@ async fn process_send_transaction(
     let signature = ctx.rpc().send_transaction(&tx).await?;
 
     println!(
-        "\n{} {}",
+        "{} {}",
         style("Transaction sent successfully!").green().bold(),
-        style(signature.to_string()).cyan()
+        style(signature).cyan()
     );
 
     Ok(())

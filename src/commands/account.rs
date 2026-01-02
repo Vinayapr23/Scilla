@@ -1,10 +1,12 @@
 use {
     crate::{
-        commands::CommandExec,
+        commands::CommandFlow,
         context::ScillaContext,
         error::ScillaResult,
         misc::helpers::{bincode_deserialize, lamports_to_sol, sol_to_lamports},
         prompt::prompt_data,
+        misc::helpers::{bincode_deserialize, lamports_to_sol},
+        prompt::prompt_input_data,
         ui::{print_error, show_spinner},
     },
     anyhow::bail,
@@ -59,35 +61,35 @@ impl fmt::Display for AccountCommand {
 }
 
 impl AccountCommand {
-    pub async fn process_command(&self, ctx: &ScillaContext) -> ScillaResult<()> {
+    pub async fn process_command(&self, ctx: &ScillaContext) -> CommandFlow<()> {
         match self {
             AccountCommand::FetchAccount => {
-                let pubkey: Pubkey = prompt_data("Enter Pubkey:")?;
-                show_spinner(self.spinner_msg(), fetch_acc_data(ctx, &pubkey)).await?;
+                let pubkey: Pubkey = prompt_input_data("Enter Pubkey:");
+                show_spinner(self.spinner_msg(), fetch_acc_data(ctx, &pubkey)).await;
             }
             AccountCommand::Balance => {
-                let pubkey: Pubkey = prompt_data("Enter Pubkey :")?;
-                show_spinner(self.spinner_msg(), fetch_account_balance(ctx, &pubkey)).await?;
+                let pubkey: Pubkey = prompt_input_data("Enter Pubkey :");
+                show_spinner(self.spinner_msg(), fetch_account_balance(ctx, &pubkey)).await;
             }
             AccountCommand::Transfer => {
                 // show_spinner(self.spinner_msg(), todo!()).await?;
             }
             AccountCommand::Airdrop => {
-                show_spinner(self.spinner_msg(), request_sol_airdrop(ctx)).await?;
+                show_spinner(self.spinner_msg(), request_sol_airdrop(ctx)).await;
             }
             AccountCommand::LargestAccounts => {
-                show_spinner(self.spinner_msg(), fetch_largest_accounts(ctx)).await?;
+                show_spinner(self.spinner_msg(), fetch_largest_accounts(ctx)).await;
             }
             AccountCommand::NonceAccount => {
-                let pubkey: Pubkey = prompt_data("Enter nonce account pubkey:")?;
-                show_spinner(self.spinner_msg(), fetch_nonce_account(ctx, &pubkey)).await?;
+                let pubkey: Pubkey = prompt_input_data("Enter nonce account pubkey:");
+                show_spinner(self.spinner_msg(), fetch_nonce_account(ctx, &pubkey)).await;
             }
             AccountCommand::GoBack => {
-                return Ok(CommandExec::GoBack);
+                return CommandFlow::GoBack;
             }
         }
 
-        Ok(CommandExec::Process(()))
+        CommandFlow::Process(())
     }
 }
 
@@ -120,8 +122,12 @@ async fn fetch_acc_data(ctx: &ScillaContext, pubkey: &Pubkey) -> anyhow::Result<
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![
             Cell::new("Lamports"),
@@ -154,7 +160,7 @@ async fn fetch_account_balance(ctx: &ScillaContext, pubkey: &Pubkey) -> anyhow::
     let acc_balance = lamports_to_sol(acc.lamports);
 
     println!(
-        "{}\n{}",
+        "{} {}",
         style("Account balance in SOL:").green().bold(),
         style(format!("{acc_balance:#?}")).cyan()
     );
@@ -195,7 +201,7 @@ async fn fetch_largest_accounts(ctx: &ScillaContext) -> anyhow::Result<()> {
         let balance_sol = lamports_to_sol(account.lamports);
         table.add_row(vec![
             Cell::new(format!("{}", idx + 1)),
-            Cell::new(account.address.clone()),
+            Cell::new(&account.address),
             Cell::new(format!("{balance_sol:.2}")),
         ]);
     }
@@ -214,16 +220,19 @@ async fn fetch_nonce_account(ctx: &ScillaContext, pubkey: &Pubkey) -> anyhow::Re
     let solana_nonce::state::State::Initialized(data) = versions.state() else {
         bail!("This account is not an initialized nonce account");
     };
-    let data = data.clone();
 
     let mut table = Table::new();
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
-        .add_row(vec![Cell::new("Address"), Cell::new(pubkey.to_string())])
+        .add_row(vec![Cell::new("Address"), Cell::new(pubkey)])
         .add_row(vec![
             Cell::new("Lamports"),
             Cell::new(format!("{}", account.lamports)),
@@ -232,10 +241,7 @@ async fn fetch_nonce_account(ctx: &ScillaContext, pubkey: &Pubkey) -> anyhow::Re
             Cell::new("Balance (SOL)"),
             Cell::new(format!("{:.6}", lamports_to_sol(account.lamports))),
         ])
-        .add_row(vec![
-            Cell::new("Owner"),
-            Cell::new(account.owner.to_string()),
-        ])
+        .add_row(vec![Cell::new("Owner"), Cell::new(account.owner)])
         .add_row(vec![
             Cell::new("Executable"),
             Cell::new(format!("{}", account.executable)),
@@ -246,12 +252,9 @@ async fn fetch_nonce_account(ctx: &ScillaContext, pubkey: &Pubkey) -> anyhow::Re
         ])
         .add_row(vec![
             Cell::new("Nonce blockhash"),
-            Cell::new(data.blockhash().to_string()),
+            Cell::new(data.blockhash()),
         ])
-        .add_row(vec![
-            Cell::new("Authority"),
-            Cell::new(data.authority.to_string()),
-        ]);
+        .add_row(vec![Cell::new("Authority"), Cell::new(data.authority)]);
 
     println!("\n{}", style("NONCE ACCOUNT INFO").green().bold());
     println!("{table}");

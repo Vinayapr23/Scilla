@@ -1,11 +1,16 @@
 use {
-    crate::commands::{
-        Command, CommandGroup, account::AccountCommand, cluster::ClusterCommand,
-        config::ConfigCommand, stake::StakeCommand, transaction::TransactionCommand,
-        vote::VoteCommand,
+    crate::{
+        commands::{
+            Command, CommandGroup, account::AccountCommand, cluster::ClusterCommand,
+            config::ConfigCommand, stake::StakeCommand, transaction::TransactionCommand,
+            vote::VoteCommand,
+        },
+        context::ScillaContext,
+        ui::print_error,
     },
-    inquire::{Select, Text},
-    std::str::FromStr,
+    console::style,
+    inquire::{InquireError, Select, Text},
+    std::{fmt::Display, path::PathBuf, process::exit, str::FromStr},
 };
 pub fn prompt_for_command() -> anyhow::Result<Command> {
     let top_level = Select::new(
@@ -131,7 +136,6 @@ fn prompt_config() -> anyhow::Result<ConfigCommand> {
         "ScillaConfig Command:",
         vec![
             ConfigCommand::Show,
-            ConfigCommand::Generate,
             ConfigCommand::Edit,
             ConfigCommand::GoBack,
         ],
@@ -141,17 +145,86 @@ fn prompt_config() -> anyhow::Result<ConfigCommand> {
     Ok(choice)
 }
 
-pub fn prompt_data<T>(msg: &str) -> anyhow::Result<T>
+pub fn prompt_input_data<T>(msg: &str) -> T
 where
     T: FromStr,
-    <T as FromStr>::Err: ToString + Send + Sync + 'static,
+    T::Err: std::fmt::Display,
 {
     loop {
-        let input = Text::new(msg).prompt()?;
-        match T::from_str(&input) {
-            Ok(value) => return Ok(value),
+        let input = match Text::new(msg).prompt() {
+            Ok(v) => v,
+            Err(e) => match e {
+                InquireError::OperationInterrupted | InquireError::OperationCanceled => {
+                    println!("{}", style("Operation cancelled. Exiting.").yellow().bold());
+                    exit(0);
+                }
+                _ => {
+                    print_error(format!("Invalid input: {e}. Please try again."));
+                    continue;
+                }
+            },
+        };
+
+        match input.parse::<T>() {
+            Ok(value) => return value,
+            Err(e) => print_error(format!("Parse error : {e}. Please try again.")),
+        }
+    }
+}
+
+pub fn prompt_select_data<T>(msg: &str, options: Vec<T>) -> T
+where
+    T: Display + Clone,
+{
+    loop {
+        match Select::new(msg, options.clone()).prompt() {
+            Ok(v) => return v,
+            Err(e) => match e {
+                InquireError::OperationInterrupted | InquireError::OperationCanceled => {
+                    println!("{}", style("Operation cancelled. Exiting.").yellow().bold());
+                    exit(0);
+                }
+                _ => {
+                    print_error(format!("Invalid Choice: {e}. Please try again."));
+                    continue;
+                }
+            },
+        }
+    }
+}
+
+pub fn prompt_keypair_path(msg: &str, ctx: &ScillaContext) -> PathBuf {
+    let default_path = ctx.keypair_path().display().to_string();
+
+    loop {
+        let input = match Text::new(msg)
+            .with_default(&default_path)
+            .with_help_message("Press Enter to use the default keypair")
+            .prompt()
+        {
+            Ok(v) => v,
+            Err(e) => match e {
+                InquireError::OperationInterrupted | InquireError::OperationCanceled => {
+                    println!("{}", style("Operation cancelled. Exiting.").yellow().bold());
+                    exit(0);
+                }
+                _ => {
+                    print_error(format!("Invalid input: {e}. Please try again."));
+                    continue;
+                }
+            },
+        };
+
+        let input = if input.trim().is_empty() {
+            &default_path
+        } else {
+            &input
+        };
+
+        match PathBuf::from_str(input) {
+            Ok(value) => return value,
             Err(e) => {
-                eprintln!("Invalid input: {}. Please try again.\n", e.to_string());
+                print_error(format!("Invalid path: {e}. Please try again."));
             }
         }
     }

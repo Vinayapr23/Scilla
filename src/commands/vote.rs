@@ -1,18 +1,18 @@
 use {
     crate::{
-        ScillaContext, ScillaResult,
-        commands::CommandExec,
+        ScillaContext,
+        commands::CommandFlow,
         misc::helpers::{
             Commission, SolAmount, build_and_send_tx, fetch_account_with_epoch, lamports_to_sol,
             read_keypair_from_path,
         },
-        prompt::prompt_data,
+        prompt::{prompt_input_data, prompt_keypair_path},
         ui::show_spinner,
     },
     anyhow::{anyhow, bail},
     comfy_table::{Cell, Table, presets::UTF8_FULL},
     console::style,
-    solana_keypair::{Keypair, Signer},
+    solana_keypair::Signer,
     solana_pubkey::Pubkey,
     solana_rpc_client_api::config::RpcGetVoteAccountsConfig,
     solana_vote_interface::{
@@ -61,116 +61,113 @@ impl fmt::Display for VoteCommand {
 }
 
 impl VoteCommand {
-    pub async fn process_command(&self, ctx: &ScillaContext) -> ScillaResult<()> {
+    pub async fn process_command(&self, ctx: &ScillaContext) -> CommandFlow<()> {
         match self {
             VoteCommand::CreateVoteAccount => {
-                let account_keypair_path: PathBuf = prompt_data("Enter Account Keypair Path:")?;
-                let identity_keypair_path: PathBuf = prompt_data("Enter Identity Keypair Path:")?;
-                let withdraw_keypair_path: PathBuf = prompt_data("Enter Withdraw Keypair Path:")?;
-                let commission: Commission = prompt_data("Enter Commission 0-100 (default 0):")?;
-
-                let account_keypair = read_keypair_from_path(&account_keypair_path)?;
-
-                let identity_keypair = read_keypair_from_path(&identity_keypair_path)?;
-
-                let withdraw_keypair = read_keypair_from_path(&withdraw_keypair_path)?;
+                let vote_account_keypair_path =
+                    prompt_keypair_path("Enter Vote Account Keypair Path:", ctx);
+                let identity_keypair_path =
+                    prompt_keypair_path("Enter Identity Keypair Path:", ctx);
+                let withdraw_keypair_path =
+                    prompt_keypair_path("Enter Withdraw Keypair Path:", ctx);
+                let commission: Commission =
+                    prompt_input_data("Enter Commission 0-100 (default 0):");
 
                 show_spinner(
                     self.spinner_msg(),
                     process_create_vote_account(
                         ctx,
-                        &account_keypair,
-                        &identity_keypair,
-                        &withdraw_keypair,
+                        &vote_account_keypair_path,
+                        &identity_keypair_path,
+                        &withdraw_keypair_path,
                         commission.value(),
                     ),
                 )
-                .await?;
+                .await;
             }
             VoteCommand::AuthorizeVoter => {
-                let vote_account_pubkey: Pubkey = prompt_data("Enter Vote Account Address:")?;
-                let authorized_keypair_path: PathBuf =
-                    prompt_data("Enter Authorized Keypair Path:")?;
-                let new_authorized_pubkey: Pubkey = prompt_data("Enter New Authorized Address:")?;
-
-                let authorized_keypair = read_keypair_from_path(&authorized_keypair_path)?;
+                let vote_account_pubkey: Pubkey = prompt_input_data("Enter Vote Account Address:");
+                let authorized_keypair_path =
+                    prompt_keypair_path("Enter Authorized Keypair Path:", ctx);
+                let new_authorized_pubkey: Pubkey =
+                    prompt_input_data("Enter New Authorized Address:");
 
                 show_spinner(
                     self.spinner_msg(),
                     process_authorize_voter(
                         ctx,
                         &vote_account_pubkey,
-                        &authorized_keypair,
+                        &authorized_keypair_path,
                         &new_authorized_pubkey,
                     ),
                 )
-                .await?;
+                .await;
             }
             VoteCommand::WithdrawFromVoteAccount => {
-                let vote_account_pubkey: Pubkey = prompt_data("Enter Vote Account Address:")?;
-                let authorized_keypair_path: PathBuf =
-                    prompt_data("Enter Authorized Withdraw Keypair Path:")?;
-                let recipient_address: Pubkey = prompt_data("Enter Recipient Address:")?;
+                let vote_account_pubkey: Pubkey = prompt_input_data("Enter Vote Account Address:");
+                let authorized_withdrawer_keypair_path =
+                    prompt_keypair_path("Enter Authorized Withdraw Keypair Path:", ctx);
+                let recipient_address: Pubkey = prompt_input_data("Enter Recipient Address:");
 
-                let amount: SolAmount = prompt_data("Enter withdraw amount in SOL:")?;
-                let authorized_keypair = read_keypair_from_path(&authorized_keypair_path)?;
+                let amount: SolAmount = prompt_input_data("Enter withdraw amount in SOL:");
 
                 show_spinner(
                     self.spinner_msg(),
                     process_sol_withdraw_from_vote_account(
                         ctx,
                         &vote_account_pubkey,
-                        &authorized_keypair,
+                        &authorized_withdrawer_keypair_path,
                         &recipient_address,
                         amount.to_lamports(),
                     ),
                 )
-                .await?;
+                .await;
             }
             VoteCommand::ShowVoteAccount => {
-                let vote_account_pubkey: Pubkey = prompt_data("Enter Vote Account Address:")?;
+                let vote_account_pubkey: Pubkey = prompt_input_data("Enter Vote Account Address:");
                 show_spinner(
                     self.spinner_msg(),
                     process_fetch_vote_account(ctx, &vote_account_pubkey),
                 )
-                .await?;
+                .await;
             }
             VoteCommand::CloseVoteAccount => {
-                let vote_account_pubkey: Pubkey = prompt_data("Enter Vote Account Address:")?;
-                let withdraw_authority_path: PathBuf =
-                    prompt_data("Enter Withdraw Authority Keypair Path:")?;
-                let destination_pubkey: Pubkey = prompt_data("Enter Destination Address:")?;
-
-                let withdraw_authority = read_keypair_from_path(&withdraw_authority_path)?;
+                let vote_account_pubkey: Pubkey = prompt_input_data("Enter Vote Account Address:");
+                let withdraw_authority_keypair_path =
+                    prompt_keypair_path("Enter Withdraw Authority Keypair Path:", ctx);
+                let destination_pubkey: Pubkey = prompt_input_data("Enter Destination Address:");
 
                 show_spinner(
                     self.spinner_msg(),
                     close_vote_account(
                         ctx,
                         &vote_account_pubkey,
-                        &withdraw_authority,
+                        &withdraw_authority_keypair_path,
                         &destination_pubkey,
                     ),
                 )
-                .await?;
+                .await;
             }
-            VoteCommand::GoBack => return Ok(CommandExec::GoBack),
+            VoteCommand::GoBack => return CommandFlow::GoBack,
         }
 
-        Ok(CommandExec::Process(()))
+        CommandFlow::Process(())
     }
 }
 
 async fn process_create_vote_account(
     ctx: &ScillaContext,
-    vote_account_keypair: &Keypair,
-    identity_keypair: &Keypair,
-    authorized_withdrawer: &Keypair,
+    vote_account_keypair_path: &PathBuf,
+    identity_keypair_path: &PathBuf,
+    withdraw_keypair_path: &PathBuf,
     commission: u8,
 ) -> anyhow::Result<()> {
+    let vote_account_keypair = read_keypair_from_path(vote_account_keypair_path)?;
+    let identity_keypair = read_keypair_from_path(identity_keypair_path)?;
+    let withdraw_keypair = read_keypair_from_path(withdraw_keypair_path)?;
     let vote_account_pubkey = vote_account_keypair.pubkey();
     let identity_pubkey = identity_keypair.pubkey();
-    let withdrawer_pubkey = authorized_withdrawer.pubkey();
+    let withdrawer_pubkey = withdraw_keypair.pubkey();
     let fee_payer_pubkey = ctx.pubkey();
 
     if fee_payer_pubkey == &vote_account_pubkey {
@@ -218,7 +215,7 @@ async fn process_create_vote_account(
     let signature = build_and_send_tx(
         ctx,
         &instructions,
-        &[ctx.keypair(), vote_account_keypair, identity_keypair],
+        &[ctx.keypair(), &vote_account_keypair, &identity_keypair],
     )
     .await?;
 
@@ -239,10 +236,11 @@ async fn process_create_vote_account(
 async fn process_authorize_voter(
     ctx: &ScillaContext,
     vote_account_pubkey: &Pubkey,
-    authorized_keypair: &Keypair,
+    authorized_keypair_path: &PathBuf,
     new_authorized_pubkey: &Pubkey,
 ) -> anyhow::Result<()> {
-    let authorized_pubkey = authorized_keypair.pubkey();
+    let authorized = read_keypair_from_path(authorized_keypair_path)?;
+    let authorized_pubkey = authorized.pubkey();
 
     let (vote_account, epoch_info) = fetch_account_with_epoch(ctx, vote_account_pubkey).await?;
 
@@ -278,8 +276,7 @@ async fn process_authorize_voter(
         VoteAuthorize::Voter,
     );
 
-    let signature =
-        build_and_send_tx(ctx, &[vote_ix], &[ctx.keypair(), authorized_keypair]).await?;
+    let signature = build_and_send_tx(ctx, &[vote_ix], &[ctx.keypair(), &authorized]).await?;
 
     println!(
         "{} {}",
@@ -293,10 +290,11 @@ async fn process_authorize_voter(
 async fn process_sol_withdraw_from_vote_account(
     ctx: &ScillaContext,
     vote_account_pubkey: &Pubkey,
-    authorized_withdrawer: &Keypair,
+    authorized_withdrawer_keypair_path: &PathBuf,
     recipient_address: &Pubkey,
     amount: u64,
 ) -> anyhow::Result<()> {
+    let authorized_withdrawer = read_keypair_from_path(authorized_withdrawer_keypair_path)?;
     let withdrawer_pubkey = authorized_withdrawer.pubkey();
 
     let vote_account = ctx
@@ -327,8 +325,12 @@ async fn process_sol_withdraw_from_vote_account(
         recipient_address,
     );
 
-    let signature =
-        build_and_send_tx(ctx, &[withdraw_ix], &[ctx.keypair(), authorized_withdrawer]).await?;
+    let signature = build_and_send_tx(
+        ctx,
+        &[withdraw_ix],
+        &[ctx.keypair(), &authorized_withdrawer],
+    )
+    .await?;
 
     println!(
         "{} {}",
@@ -342,9 +344,10 @@ async fn process_sol_withdraw_from_vote_account(
 async fn close_vote_account(
     ctx: &ScillaContext,
     vote_account_pubkey: &Pubkey,
-    withdraw_authority: &Keypair,
+    withdraw_authority_keypair_path: &PathBuf,
     destination_pubkey: &Pubkey,
 ) -> anyhow::Result<()> {
+    let withdraw_authority = read_keypair_from_path(withdraw_authority_keypair_path)?;
     let vote_account_status = ctx
         .rpc()
         .get_vote_accounts_with_config(RpcGetVoteAccountsConfig {
@@ -380,7 +383,7 @@ async fn close_vote_account(
     );
 
     let signature =
-        build_and_send_tx(ctx, &[withdraw_ix], &[ctx.keypair(), withdraw_authority]).await?;
+        build_and_send_tx(ctx, &[withdraw_ix], &[ctx.keypair(), &withdraw_authority]).await?;
 
     println!(
         "{} {}",
@@ -430,8 +433,12 @@ async fn process_fetch_vote_account(
     table
         .load_preset(UTF8_FULL)
         .set_header(vec![
-            Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
-            Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
+            Cell::new("Field")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
+            Cell::new("Value")
+                .add_attribute(comfy_table::Attribute::Bold)
+                .fg(comfy_table::Color::Cyan),
         ])
         .add_row(vec![
             Cell::new("Account Balance"),
@@ -439,17 +446,14 @@ async fn process_fetch_vote_account(
         ])
         .add_row(vec![
             Cell::new("Validator Identity"),
-            Cell::new(vote_state.node_pubkey.to_string()),
+            Cell::new(vote_state.node_pubkey),
         ])
         .add_row(vec![Cell::new("Vote Authority"), Cell::new(vote_authority)])
         .add_row(vec![
             Cell::new("Withdraw Authority"),
-            Cell::new(vote_state.authorized_withdrawer.to_string()),
+            Cell::new(vote_state.authorized_withdrawer),
         ])
-        .add_row(vec![
-            Cell::new("Credits"),
-            Cell::new(vote_state.credits().to_string()),
-        ])
+        .add_row(vec![Cell::new("Credits"), Cell::new(vote_state.credits())])
         .add_row(vec![
             Cell::new("Commission"),
             Cell::new(format!(
