@@ -2,7 +2,7 @@ use {
     crate::{
         commands::CommandFlow,
         context::ScillaContext,
-        misc::helpers::{bincode_deserialize, lamports_to_sol},
+        misc::helpers::{bincode_deserialize, lamports_to_sol, sol_to_lamports},
         prompt::prompt_input_data,
         ui::{print_error, show_spinner},
     },
@@ -91,7 +91,11 @@ impl AccountCommand {
 }
 
 async fn request_sol_airdrop(ctx: &ScillaContext) -> anyhow::Result<()> {
-    let sig = ctx.rpc().request_airdrop(ctx.pubkey(), 1).await;
+    // request an airdrop worth of 1 SOL
+    let sig = ctx
+        .rpc()
+        .request_airdrop(ctx.pubkey(), sol_to_lamports(1.0))
+        .await;
     match sig {
         Ok(signature) => {
             println!(
