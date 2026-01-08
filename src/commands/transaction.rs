@@ -115,7 +115,7 @@ impl TransactionCommand {
 
                 let custom_idl_path = if use_custom_idl {
                     Some(prompt_input_data::<String>(
-                        "Enter IDL file path (or directory):",
+                        "Enter IDL file path:",
                     ))
                 } else {
                     None
@@ -486,9 +486,9 @@ fn display_parsed_instruction(
 ) -> anyhow::Result<()> {
     use serde_json::Value;
 
-    // Try to parse known native programs
+
     let Value::Object(parsed_map) = &parsed_ix.parsed else {
-        // If not an object, just show generic display
+  
         return display_generic_parsed(parsed_ix);
     };
 
