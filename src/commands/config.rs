@@ -142,9 +142,7 @@ fn show_config(ctx: &ScillaContext) -> anyhow::Result<()> {
             Cell::new("Commitment Level"),
             Cell::new(config.commitment_level),
         ])
-
         .add_row(vec![Cell::new("Keypair Path"), Cell::new(keypair_display)])
-
         .add_row(vec![
             Cell::new("IDL Path"),
             Cell::new(config.idl.custom_idl_path.display()),
@@ -157,7 +155,6 @@ fn show_config(ctx: &ScillaContext) -> anyhow::Result<()> {
             Cell::new("Cache IDLs"),
             Cell::new(config.idl.cache_idls.to_string()),
         ]);
-
 
     println!("\n{}", style("SCILLA CONFIG").green().bold());
     println!("{}", table);
@@ -302,11 +299,10 @@ fn edit_config(ctx: &mut ScillaContext) -> anyhow::Result<()> {
                 continue;
             }
 
-     
             config.keypair_path = keypair_input;
             break;
         },
-        
+
         ConfigField::IdlPath => {
             let new_path: String = prompt_input_data("Enter IDL directory path:");
             config.idl.custom_idl_path = expand_tilde(&new_path);

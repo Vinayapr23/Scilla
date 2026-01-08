@@ -114,9 +114,7 @@ impl TransactionCommand {
                     .unwrap_or(false);
 
                 let custom_idl_path = if use_custom_idl {
-                    Some(prompt_input_data::<String>(
-                        "Enter IDL file path:",
-                    ))
+                    Some(prompt_input_data::<String>("Enter IDL file path:"))
                 } else {
                     None
                 };
@@ -438,15 +436,15 @@ async fn process_parse_instruction(
     let config = crate::config::ScillaConfig::load()?;
 
     let idl_parser = if let Some(custom_path) = custom_idl_path {
-    IdlParser::new_with_custom_path(&custom_path)
-} else {
-    IdlParser::new(&config.idl)
-};
+        IdlParser::new_with_custom_path(&custom_path)
+    } else {
+        IdlParser::new(&config.idl)
+    };
 
-// Display each instruction
-for (idx, ui_instruction) in parsed_msg.instructions.iter().enumerate() {
-    display_ui_instruction_with_idl(idx, ui_instruction, &idl_parser).await?;
-}
+    // Display each instruction
+    for (idx, ui_instruction) in parsed_msg.instructions.iter().enumerate() {
+        display_ui_instruction_with_idl(idx, ui_instruction, &idl_parser).await?;
+    }
 
     Ok(())
 }
@@ -458,26 +456,23 @@ async fn display_ui_instruction_with_idl(
     println!("\n{}", style(format!("INSTRUCTION #{}", idx)).cyan().bold());
 
     match ui_instruction {
-        UiInstruction::Parsed(ui_parsed_ix) => {
-            match ui_parsed_ix {
-                UiParsedInstruction::Parsed(parsed_ix) => {
-                    display_parsed_instruction(parsed_ix)
-                }
-                UiParsedInstruction::PartiallyDecoded(partial_ix) => {
-                    let program_id = Pubkey::from_str(&partial_ix.program_id)?;
-                    let instruction_data = bs58::decode(&partial_ix.data).into_vec()?;
+        UiInstruction::Parsed(ui_parsed_ix) => match ui_parsed_ix {
+            UiParsedInstruction::Parsed(parsed_ix) => display_parsed_instruction(parsed_ix),
+            UiParsedInstruction::PartiallyDecoded(partial_ix) => {
+                let program_id = Pubkey::from_str(&partial_ix.program_id)?;
+                let instruction_data = bs58::decode(&partial_ix.data).into_vec()?;
 
-                    if let Some(custom_data) = idl_parser.try_parse_custom(&program_id, &instruction_data).await {
-                        display_custom_instruction(&program_id, &custom_data)
-                    } else {
-                        display_partially_decoded_instruction(partial_ix)
-                    }
+                if let Some(custom_data) = idl_parser
+                    .try_parse_custom(&program_id, &instruction_data)
+                    .await
+                {
+                    display_custom_instruction(&program_id, &custom_data)
+                } else {
+                    display_partially_decoded_instruction(partial_ix)
                 }
             }
-        }
-        UiInstruction::Compiled(compiled_ix) => {
-            display_compiled_instruction(compiled_ix)
-        }
+        },
+        UiInstruction::Compiled(compiled_ix) => display_compiled_instruction(compiled_ix),
     }
 }
 
@@ -486,9 +481,7 @@ fn display_parsed_instruction(
 ) -> anyhow::Result<()> {
     use serde_json::Value;
 
-
     let Value::Object(parsed_map) = &parsed_ix.parsed else {
-  
         return display_generic_parsed(parsed_ix);
     };
 
@@ -780,10 +773,10 @@ fn display_memo_instruction(info: Option<&serde_json::Value>) -> anyhow::Result<
         ])
         .add_row(vec![Cell::new("Program"), Cell::new("Memo Program")]);
 
-    if let Some(Value::Object(info_map)) = info {
-        if let Some(memo) = info_map.get("memo").and_then(|v| v.as_str()) {
-            table.add_row(vec![Cell::new("Memo"), Cell::new(memo)]);
-        }
+    if let Some(Value::Object(info_map)) = info
+        && let Some(memo) = info_map.get("memo").and_then(|v| v.as_str())
+    {
+        table.add_row(vec![Cell::new("Memo"), Cell::new(memo)]);
     }
 
     println!("{}", table);
@@ -809,7 +802,7 @@ fn display_generic_parsed(
     println!("{}", table);
     println!("\n{}", style("Parsed Data:").dim());
     println!("{}", serde_json::to_string_pretty(&parsed_ix.parsed)?);
-    print!("\n");
+    println!();
     Ok(())
 }
 
@@ -879,9 +872,18 @@ fn display_custom_instruction(
             Cell::new("Field").add_attribute(comfy_table::Attribute::Bold),
             Cell::new("Value").add_attribute(comfy_table::Attribute::Bold),
         ])
-        .add_row(vec![Cell::new("Program"), Cell::new(&custom_data.program_name)])
-        .add_row(vec![Cell::new("Program ID"), Cell::new(program_id.to_string())])
-        .add_row(vec![Cell::new("Instruction"), Cell::new(&custom_data.instruction_name)]);
+        .add_row(vec![
+            Cell::new("Program"),
+            Cell::new(&custom_data.program_name),
+        ])
+        .add_row(vec![
+            Cell::new("Program ID"),
+            Cell::new(program_id.to_string()),
+        ])
+        .add_row(vec![
+            Cell::new("Instruction"),
+            Cell::new(&custom_data.instruction_name),
+        ]);
 
     for (key, value) in &custom_data.args {
         let display_value = match value {
@@ -894,7 +896,6 @@ fn display_custom_instruction(
     println!("{}", table);
     Ok(())
 }
-
 
 struct IdlParser {
     idl_path: PathBuf,
@@ -912,7 +913,7 @@ impl IdlParser {
     fn new_with_custom_path(path: &str) -> Self {
         let expanded = crate::config::expand_tilde(path);
         let is_file = expanded.is_file();
-        
+
         Self {
             idl_path: expanded,
             is_file,
@@ -950,15 +951,18 @@ impl IdlParser {
         // Try to match discriminator with multiple schemes
         for ix in instructions {
             let ix_name = ix.get("name")?.as_str()?;
-            
+
             // Generate all possible discriminators for this instruction
             let possible_discriminators = generate_all_discriminators(ix_name);
-            
+
             // Check if any match
             if possible_discriminators.iter().any(|d| d == discriminator) {
                 let args_data = &instruction_data[8..];
                 let mut args = HashMap::new();
-                args.insert("data_hex".to_string(), Value::String(hex::encode(args_data)));
+                args.insert(
+                    "data_hex".to_string(),
+                    Value::String(hex::encode(args_data)),
+                );
 
                 if let Some(args_array) = ix.get("args").and_then(|a| a.as_array()) {
                     let arg_names: Vec<String> = args_array
@@ -995,27 +999,27 @@ struct CustomInstructionData {
 /// Generate all possible discriminator schemes for an instruction name
 fn generate_all_discriminators(ix_name: &str) -> Vec<[u8; 8]> {
     let mut discriminators = Vec::new();
-    
+
     // Scheme 1: Anchor style - global:camelCase
     discriminators.push(compute_discriminator(&format!("global:{}", ix_name)));
-    
+
     // Scheme 2: Anchor style - global:PascalCase
     let pascal_case = to_pascal_case(ix_name);
     discriminators.push(compute_discriminator(&format!("global:{}", pascal_case)));
-    
+
     // Scheme 3: Shank style - global:snake_case
     let snake_case = to_snake_case(ix_name);
     discriminators.push(compute_discriminator(&format!("global:{}", snake_case)));
-    
+
     // Scheme 4: Just the name without prefix
     discriminators.push(compute_discriminator(ix_name));
-    
+
     // Scheme 5: Just PascalCase without prefix
     discriminators.push(compute_discriminator(&pascal_case));
-    
+
     // Scheme 6: Just snake_case without prefix
     discriminators.push(compute_discriminator(&snake_case));
-    
+
     discriminators
 }
 
@@ -1033,11 +1037,11 @@ fn to_pascal_case(s: &str) -> String {
     if s.is_empty() {
         return s.to_string();
     }
-    
+
     let mut chars = s.chars();
     let first = chars.next().unwrap().to_uppercase().to_string();
     let rest: String = chars.collect();
-    
+
     format!("{}{}", first, rest)
 }
 
